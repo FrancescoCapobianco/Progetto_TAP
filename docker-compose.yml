@@ -1,0 +1,229 @@
+services:
+  # Database
+  db:
+    image: mysql:8.0
+    container_name: e-commerce_db
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+     - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: eCommerce
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - E-Commerce_Network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data Generation
+  WordPress:
+     image: wordpress:6.7.1
+     container_name: e-commerce_wordpress
+     pull_policy: if_not_present
+     # Password: 7Cd6JFf0gx91h*V4fj
+     ports:
+       - "8000:80"
+     environment:
+       WORDPRESS_DB_HOST: db:3306
+       WORDPRESS_DB_USER: "root"                  # solo in fase di sviluppo
+       WORDPRESS_DB_PASSWORD: "root_password"     # solo in fase di sviluppo
+       WORDPRESS_DB_NAME: eCommerce
+     extra_hosts:
+       - "host.docker.internal:host-gateway"
+     volumes:
+       - wp_data:/var/www/html
+       - ./wp-content/uploads:/var/www/html/wp-content/uploads
+     networks:
+       - E-Commerce_Network
+     depends_on:
+       db:
+         condition: service_healthy
+       fluent-bit:
+         condition: service_started
+
+  # Data Ingestion (Store & Forward)
+  fluent-bit:
+     image: fluent/fluent-bit:latest
+     container_name: e-commerce_fluent-bit
+     ports:
+      - "2020:2020"
+     volumes:
+      - ./fluent-bit/etc:/fluent-bit/etc
+      - ./wp-content/uploads:/input_logs
+     networks:
+       - E-Commerce_Network
+     depends_on:
+        topics:
+         condition: service_completed_successfully
+
+  # Broker
+  kafka:
+   image: apache/kafka:4.1.0
+   hostname: e-commerce_kafkaserver
+   container_name: e-commerce_kafkaserver
+   environment:
+    KAFKA_NODE_ID: 1
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+    KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT_HOST://e-commerce_kafkaserver:9092,PLAINTEXT://e-commerce_kafkaserver:29092'
+    KAFKA_PROCESS_ROLES: 'broker,controller'
+    KAFKA_CONTROLLER_QUORUM_VOTERS: '1@e-commerce_kafkaserver:29093'
+    KAFKA_LISTENERS: 'CONTROLLER://:29093,PLAINTEXT_HOST://:9092,PLAINTEXT://:29092'
+    KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+    KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+    CLUSTER_ID: '4L6g3nShT-eMCtK--X86sw'                      
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1            
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0                 
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+   ports:
+     - "9092:9092"
+   networks:
+     - E-Commerce_Network
+
+  kafka-ui:
+   image: provectuslabs/kafka-ui:latest
+   container_name: e-commerce_kafkaui
+   ports:
+    - "8085:8080"
+   environment:
+     KAFKA_CLUSTERS_0_NAME: local
+     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: e-commerce_kafkaserver:9092
+   networks:
+    - E-Commerce_Network
+
+  # Topic: Topic_Purchase, Topic_Analysis e Topic_Dashboard
+  topics:
+   image: apache/kafka:4.1.0
+   container_name: creation_topics
+   command: >
+     bash -c "
+     /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic Topic_Purchase --bootstrap-server e-commerce_kafkaserver:9092 &&
+     /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic Topic_Analysis --bootstrap-server e-commerce_kafkaserver:9092 &&
+     /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --topic Topic_Dashboard --bootstrap-server e-commerce_kafkaserver:9092
+     "
+   networks:
+    - E-Commerce_Network
+   depends_on:
+     - kafka
+
+  # Data Enrichment
+  # process_orders.py
+  sparksql:
+    image: progetto_tap-sparksql:latest
+    user: root
+    container_name: e-commerce-sparksql
+    depends_on:
+      kafka:
+        condition: service_started
+    volumes:
+      - ./spark:/opt/spark-apps:cached      
+    networks:
+      - E-Commerce_Network
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-submit 
+      --master local[1]
+      --conf spark.driver.memory=512m
+      --conf spark.executor.memory=512m
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 
+      /opt/spark-apps/process_orders.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50' # mezza CPU
+
+  # machine_learning.py
+  sparkmllib:
+    image: progetto_tap-sparkmllib:latest
+    user: root
+    container_name: e-commerce-sparkmllib
+    depends_on:
+      kafka:
+       condition: service_started
+    volumes:
+     - ./spark:/opt/spark-apps:cached
+    networks:
+     - E-Commerce_Network
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-submit
+      --master local[1]
+      --conf spark.driver.memory=512m
+      --conf spark.executor.memory=512m
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0
+      /opt/spark-apps/machine_learning.py
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50' # mezza CPU
+
+  # Data Storage
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.22
+    container_name: e-commerce_logstash
+    volumes:
+      - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+    environment:
+      - "LS_JAVA_OPTS=-Xmx256m -Xms256m" # limite RAM
+      - XPACK_MONITORING_ENABLED=false
+      - PIPELINE_WORKERS=1
+      - PIPELINE_BATCH_SIZE=25
+    depends_on:
+      - elasticsearch
+      - kafka
+    networks:
+      - E-Commerce_Network
+    deploy:
+      resources:
+        limits:
+         cpus: '0.50' # mezza CPU
+
+  elasticsearch:
+   image: docker.elastic.co/elasticsearch/elasticsearch:7.17.22
+   container_name: e-commerce_elasticsearch
+   environment:
+      - node.name=elasticsearch
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" # limite RAM
+      - xpack.security.enabled=false     # Disabilita Login/Password (DEMO)
+   ports:
+    - "9200:9200"
+   volumes:
+    - es_data:/usr/share/elasticsearch/data
+   networks:
+    - E-Commerce_Network
+   deploy:
+      resources:
+        limits:
+          cpus: '1.0' # una CPU
+  
+  # Data Visualization
+  kibana:
+   image: docker.elastic.co/kibana/kibana:7.17.22
+   container_name: e-commerce_kibana
+   environment:
+    - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+   ports:
+    - "5601:5601"
+   depends_on:
+    - elasticsearch
+   networks:
+    - E-Commerce_Network
+  
+# Rete Docker
+networks:
+  E-Commerce_Network:
+    driver: bridge
+
+# Volumi Persistenti:
+volumes:
+  db_data:
+  wp_data:
+  es_data:
