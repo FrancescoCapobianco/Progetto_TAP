@@ -6,7 +6,7 @@ Una pipeline basata su architettura **TAP** (Transazione, Analisi, Presentazione
 ![Architecture Overview](./pipeline.png)
 
 ## Obiettivo del Progetto:
-Trasformare i dati transazionali grezzi (ordini) in informazioni di lavoro.  
+Trasformare i dati transazionali grezzi (ordini) in informazioni di valore.  
 Il seguente progetto utilizza il **Machine Learning (K-Means Clustering)** per profilare gli utenti in tempo reale in base al loro comportamento di navigazione e acquisto:
 - **Impulsive Buyer:** Acquisto rapido, tempo rapido di decisione.
 - **Reasoned Buyer:** Sessione lunga, acquisto ponderato.
