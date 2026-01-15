@@ -14,8 +14,7 @@ Il seguente progetto utilizza il **Machine Learning (K-Means Clustering)** per p
 ### Installazione:
 1. **Clona la repository:**
    ```bash
-   git clone [https://github.com/tuo-username/nome-repo.git](https://github.com/tuo-username/nome-repo.git)
-   cd nome-repo
+   git clone https://github.com/FrancescoCapobianco/Progetto_TAP.git
 
 ### Comandi:
    ```bash
