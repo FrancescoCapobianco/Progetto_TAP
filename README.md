@@ -1,6 +1,7 @@
 # Behavioral Analysis for E-Commerce
 
-> **Progetto_TAP ** > Una pipeline basata su architettura **TAP** (Transazione, Analisi, Presentazione) per l'analisi comportamentale e finanziaria di un E-Commerce.
+## Progetto_TAP
+Una pipeline basata su architettura **TAP** (Transazione, Analisi, Presentazione) per l'analisi comportamentale e finanziaria di un E-Commerce.
 
 ![Architecture Overview](./pipeline.png)
 
