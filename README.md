@@ -15,6 +15,7 @@ Il seguente progetto utilizza il **Machine Learning (K-Means Clustering)** per p
 1. **Clona la repository:**
    ```bash
    git clone https://github.com/FrancescoCapobianco/Progetto_TAP.git
+    ```
 
 ### Comandi:
    ```bash
@@ -23,6 +24,7 @@ Il seguente progetto utilizza il **Machine Learning (K-Means Clustering)** per p
    docker-compose up db WordPress fluent-bit kafka kafka-ui topics sparksql sparkmllib
    docker-compose down db WordPress fluent-bit sparksql sparkmllib
    docker-compose up logstash elasticsearch kibana
+   ```
 
 ### Controllo servizi:
    • Website:                    http://localhost:8000
