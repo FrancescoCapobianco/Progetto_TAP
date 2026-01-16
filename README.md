@@ -23,3 +23,9 @@ Il seguente progetto utilizza il **Machine Learning (K-Means Clustering)** per p
    docker-compose up db WordPress fluent-bit kafka kafka-ui topics sparksql sparkmllib
    docker-compose down db WordPress fluent-bit sparksql sparkmllib
    docker-compose up logstash elasticsearch kibana
+
+### Controllo servizi:
+   • Website:                    http://localhost:8000
+   • kafka-ui:                   http://localhost:8085
+   • elasticsearch:              http://localhost:9200
+   • kibana:                     http://localhost:5601
